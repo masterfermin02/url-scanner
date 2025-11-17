@@ -34,7 +34,9 @@
   },
   "require-dev": {
     "pestphp/pest": "^4.1",
-    "illuminate/http": "^12.38"
+    "illuminate/http": "^12.38",
+    "spatie/pest-plugin-snapshots": "^2.2",
+    "spatie/temporary-directory": "^2.3"
   },
   "config": {
     "allow-plugins": {

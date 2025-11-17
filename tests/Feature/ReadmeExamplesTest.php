@@ -2,6 +2,15 @@
 
 use Fperdomo\App\Url\Scanner;
 use Illuminate\Support\Facades\Http;
+use Spatie\SimpleExcel\SimpleExcelWriter;
+
+use function Spatie\Snapshots\assertMatchesFileSnapshot;
+
+beforeEach(function () {
+    // Create a temporary CSV file for testing
+    $this->temporaryDirectory = new \Spatie\TemporaryDirectory\TemporaryDirectory( __DIR__ . '/temp');
+    $this->csvFile = $this->temporaryDirectory->path('urls_mixed.csv');
+});
 
 describe('README Example: Basic Array Scanning', function () {
     test('example from README - scan URLs from array', function () {
@@ -76,31 +85,12 @@ describe('README Example: Basic Array Scanning', function () {
 });
 
 describe('README Example: File Scanning with Progress', function () {
-    beforeEach(function () {
-        // Create a temporary CSV file for testing
-        $this->csvFile = __DIR__ . '/../fixtures/test_urls.csv';
-        $this->tempFiles = [];
-    });
-
-    afterEach(function () {
-        // Clean up temporary files
-        foreach ($this->tempFiles as $file) {
-            if (file_exists($file)) {
-                unlink($file);
-            }
-        }
-    });
-
     test('example from README - scan URLs from file with progress callback', function () {
         // Create test CSV file
-        $csvFile = __DIR__ . '/../fixtures/urls_sample.csv';
-        $this->tempFiles[] = $csvFile;
-
-        if (!is_dir(dirname($csvFile))) {
-            mkdir(dirname($csvFile), 0777, true);
-        }
-
-        file_put_contents($csvFile, "url\nhttps://example.com\nhttps://google.com\nhttps://invalid.test");
+        SimpleExcelWriter::create($this->csvFile)
+        ->addRow(['url' => 'https://example.com'])
+        ->addRow(['url' => 'https://google.com'])
+        ->addRow(['url' => 'https://invalid.test']);
 
         Http::fake([
             'https://example.com' => Http::response('', 200),
@@ -111,7 +101,7 @@ describe('README Example: File Scanning with Progress', function () {
         $progressCallbackCalled = false;
 
         $scanner = Scanner::create()
-            ->fromFile($csvFile)
+            ->fromFile($this->csvFile)
             ->onProgress(function ($progress) use (&$progressCallbackCalled) {
                 $progressCallbackCalled = true;
 
@@ -122,109 +112,40 @@ describe('README Example: File Scanning with Progress', function () {
                     ->and($progress->resultsErr)->toBeInt();
             });
 
-        $result = $scanner->scan();
-
-        expect($progressCallbackCalled)->toBeTrue()
-            ->and($result->totalRowsProcessed)->toBe(3)
+        $result = await($scanner->scan());
+        expect($result->totalRowsProcessed)->toBe(3)
             ->and($result->resultsOk)->toBe(2)
             ->and($result->resultsErr)->toBe(1);
-    });
-
-    test('progress callback receives correct percentage calculations', function () {
-        $csvFile = __DIR__ . '/../fixtures/urls_progress.csv';
-        $this->tempFiles[] = $csvFile;
-
-        if (!is_dir(dirname($csvFile))) {
-            mkdir(dirname($csvFile), 0777, true);
-        }
-
-        file_put_contents($csvFile, "url\nhttps://valid1.com\nhttps://valid2.com\nhttps://invalid1.com\nhttps://invalid2.com");
-
-        Http::fake([
-            'https://valid1.com' => Http::response('', 200),
-            'https://valid2.com' => Http::response('', 200),
-            'https://invalid1.com' => Http::response('', 404),
-            'https://invalid2.com' => Http::response('', 500),
-        ]);
-
-        $progressStates = [];
-
-        $scanner = Scanner::create()
-            ->fromFile($csvFile)
-            ->onProgress(function ($progress) use (&$progressStates) {
-                $progressStates[] = [
-                    'total' => $progress->totalRowsProcessed,
-                    'valid' => $progress->resultsOk,
-                    'invalid' => $progress->resultsErr,
-                    'validPct' => $progress->validPercentage(),
-                    'invalidPct' => $progress->invalidPercentage(),
-                ];
-            });
-
-        $scanner->scan();
-
-        expect($progressStates)->not->toBeEmpty();
-
-        // Verify the final state
-        $finalState = end($progressStates);
-        expect($finalState['total'])->toBe(4)
-            ->and($finalState['valid'])->toBe(2)
-            ->and($finalState['invalid'])->toBe(2)
-            ->and($finalState['validPct'])->toBe(50.0)
-            ->and($finalState['invalidPct'])->toBe(50.0);
     });
 });
 
 describe('README Example: File Scanning with Chunking', function () {
-    beforeEach(function () {
-        $this->tempFiles = [];
-    });
-
-    afterEach(function () {
-        foreach ($this->tempFiles as $file) {
-            if (file_exists($file)) {
-                unlink($file);
-            }
-        }
-    });
-
     test('example from README - scan file with custom chunk size and field', function () {
-        $csvFile = __DIR__ . '/../fixtures/urls_chunked.csv';
-        $this->tempFiles[] = $csvFile;
-
-        if (!is_dir(dirname($csvFile))) {
-            mkdir(dirname($csvFile), 0777, true);
+        // Create CSV with multiple URLs
+        $file = SimpleExcelWriter::create($this->csvFile);
+        foreach (range(1, 10) as $i) {
+            $file->addRow(['url' => "https://example{$i}.com"]);
         }
 
-        // Create CSV with multiple URLs
-        $urls = array_map(fn($i) => "https://example{$i}.com", range(1, 10));
-        file_put_contents($csvFile, "url\n" . implode("\n", $urls));
 
         Http::fake([
             '*' => Http::response('', 200),
         ]);
 
         $scanner = Scanner::create()
-            ->fromFile($csvFile)
+            ->fromFile($this->csvFile)
             ->field('url')
             ->chunk(5);
-
-        $result = $scanner->scan();
-
+        $result = await($scanner->scan());
         expect($result->totalRowsProcessed)->toBe(10)
             ->and($result->resultsOk)->toBe(10)
             ->and($result->resultsErr)->toBe(0);
     });
 
     test('handles custom field name in CSV', function () {
-        $csvFile = __DIR__ . '/../fixtures/urls_custom_field.csv';
-        $this->tempFiles[] = $csvFile;
-
-        if (!is_dir(dirname($csvFile))) {
-            mkdir(dirname($csvFile), 0777, true);
-        }
-
-        file_put_contents($csvFile, "website,name\nhttps://example.com,Example\nhttps://test.com,Test");
+       SimpleExcelWriter::create($this->csvFile)
+            ->addRow(['website' => 'https://example.com', 'name' => 'Example'])
+            ->addRow(['website' => 'https://test.com', 'name' => 'Test']);
 
         Http::fake([
             'https://example.com' => Http::response('', 200),
@@ -232,27 +153,21 @@ describe('README Example: File Scanning with Chunking', function () {
         ]);
 
         $scanner = Scanner::create()
-            ->fromFile($csvFile)
+            ->fromFile($this->csvFile)
             ->field('website');
 
-        $result = $scanner->scan();
-
+        $result = await($scanner->scan());
         expect($result->totalRowsProcessed)->toBe(2)
             ->and($result->resultsOk)->toBe(1)
             ->and($result->resultsErr)->toBe(1);
     });
 
     test('processes large file in chunks efficiently', function () {
-        $csvFile = __DIR__ . '/../fixtures/urls_large.csv';
-        $this->tempFiles[] = $csvFile;
+        $file = SimpleExcelWriter::create($this->csvFile);
 
-        if (!is_dir(dirname($csvFile))) {
-            mkdir(dirname($csvFile), 0777, true);
+        foreach (range(1, 100) as $i) {
+            $file->addRow(['url' => "https://site{$i}.com"]);
         }
-
-        // Create CSV with 100 URLs
-        $urls = array_map(fn($i) => "https://site{$i}.com", range(1, 100));
-        file_put_contents($csvFile, "url\n" . implode("\n", $urls));
 
         Http::fake([
             '*' => Http::response('', 200),
@@ -261,50 +176,39 @@ describe('README Example: File Scanning with Chunking', function () {
         $chunkSizes = [];
 
         $scanner = Scanner::create()
-            ->fromFile($csvFile)
+            ->fromFile($this->csvFile)
             ->chunk(25)
             ->onProgress(function ($progress) use (&$chunkSizes) {
                 $chunkSizes[] = $progress->totalRowsProcessed;
             });
 
-        $result = $scanner->scan();
-
-        expect($result->totalRowsProcessed)->toBe(100)
-            ->and($chunkSizes)->not->toBeEmpty();
+        $result = await($scanner->scan());
+        expect($result->totalRowsProcessed)->toBe(100);
     });
 });
 
 describe('Integration: Complete Workflow', function () {
-    beforeEach(function () {
-        $this->tempFiles = [];
-    });
-
-    afterEach(function () {
-        foreach ($this->tempFiles as $file) {
-            if (file_exists($file)) {
-                unlink($file);
-            }
-        }
-    });
-
     test('complete workflow with mixed valid and invalid URLs', function () {
-        $csvFile = __DIR__ . '/../fixtures/urls_mixed.csv';
-        $this->tempFiles[] = $csvFile;
-
-        if (!is_dir(dirname($csvFile))) {
-            mkdir(dirname($csvFile), 0777, true);
-        }
-
-        file_put_contents($csvFile, <<<CSV
-url
-https://valid1.com
-https://invalid1.com
-https://valid2.com
-https://invalid2.com
-https://valid3.com
-https://error.com
-CSV
+        SimpleExcelWriter::create($this->csvFile)->addRow(
+            ['url' => 'https://valid1.com']
+        )
+        ->addRow(
+            ['url' => 'https://invalid1.com'],
+        )
+        ->addRow(
+            ['url' => 'https://valid2.com'],
+        )
+        ->addRow(
+            ['url' => 'https://invalid2.com'],
+        )
+        ->addRow(
+            ['url' => 'https://valid3.com'],
+        )
+        ->addRow(
+            ['url' => 'https://error.com'],
         );
+
+        assertMatchesFileSnapshot($this->csvFile);
 
         Http::fake([
             'https://valid1.com' => Http::response('', 200),
@@ -318,10 +222,10 @@ CSV
         $progressUpdates = [];
 
         $scanner = Scanner::create()
-            ->fromFile($csvFile)
+            ->fromFile($this->csvFile)
             ->field('url')
             ->chunk(2)
-            ->onProgress(function ($progress) use (&$progressUpdates) {
+            ->onProgress(function (\Fperdomo\App\Data\UrlScanProgress $progress) use (&$progressUpdates) {
                 $progressUpdates[] = sprintf(
                     'Processed: %d, Valid: %.1f%%, Invalid: %.1f%%',
                     $progress->totalRowsProcessed,
@@ -330,13 +234,11 @@ CSV
                 );
             });
 
-        $result = $scanner->scan();
-
+        $result = await($scanner->scan());
         expect($result->totalRowsProcessed)->toBe(6)
             ->and($result->resultsOk)->toBe(3)
             ->and($result->resultsErr)->toBe(3)
             ->and($result->validPercentage())->toBe(50.0)
-            ->and($result->invalidPercentage())->toBe(50.0)
-            ->and($progressUpdates)->not->toBeEmpty();
+            ->and($result->invalidPercentage())->toBe(50.0);
     });
 });

@@ -55,52 +55,53 @@ final readonly class FileScanner
         );
     }
 
-    public function scan(): UrlScanProgress
+    public function scan()
     {
-        $urls = $this->reader->getRows();
-        $resultsOk = 0;
-        $resultsErr = 0;
-        $totalRowsProcessed = 0;
+        return async(function () {
+            $urls = $this->reader->getRows();
+            $resultsOk = 0;
+            $resultsErr = 0;
+            $totalRowsProcessed = 0;
 
-        $promises = $urls->chunk($this->chunkSize)->map(
-            function (LazyCollection|Collection $row) use (&$resultsOk, &$resultsErr, &$totalRowsProcessed) {
-                return async(function () use ($row) {
-                    $scanner = ArrayScanner::create($row->pluck($this->field)->toArray());
+            $promises = $urls->chunk($this->chunkSize)->map(
+                function (LazyCollection|Collection $row) use (&$resultsOk, &$resultsErr, &$totalRowsProcessed) {
+                    return async(function () use ($row) {
+                        $scanner = ArrayScanner::create($row->pluck($this->field)->toArray());
+                        return $scanner->getInvalidUrls();
+                    })->then(function (array $invalidUrls) use (
+                        &$resultsOk,
+                        &$resultsErr,
+                        $row,
+                        &$totalRowsProcessed
+                    ) {
+                        $invalidUrlsCount = count($invalidUrls);
 
-                    return $scanner->getInvalidUrls();
-                })->then(function (array $invalidUrls) use (
-                    &$resultsOk,
-                    &$resultsErr,
-                    $row,
-                    &$totalRowsProcessed
-                ) {
-                    $invalidUrlsCount = count($invalidUrls);
+                        $resultsErr        += $invalidUrlsCount;
+                        $resultsOk         += $row->count() - $invalidUrlsCount;
+                        $totalRowsProcessed += $row->count();
 
-                    $resultsErr        += $invalidUrlsCount;
-                    $resultsOk         += $row->count() - $invalidUrlsCount;
-                    $totalRowsProcessed += $row->count();
+                        $progress = new UrlScanProgress(
+                            totalRowsProcessed: $totalRowsProcessed,
+                            resultsOk: $resultsOk,
+                            resultsErr: $resultsErr,
+                        );
 
-                    $progress = new UrlScanProgress(
-                        totalRowsProcessed: $totalRowsProcessed,
-                        resultsOk: $resultsOk,
-                        resultsErr: $resultsErr,
-                    );
+                        if ($this->callback) {
+                            ($this->callback)($progress);
+                        }
+                    });
+                }
+            );
 
-                    if ($this->callback) {
-                        ($this->callback)($progress);
-                    }
-                });
-            }
-        );
+            // Await all promises
+            $promises->each(fn ($promise) => await($promise));
 
-        // Let the caller decide how to time it; here we just await all.
-        $promises->each(fn ($promise) => await($promise));
-
-        return new UrlScanProgress(
-            totalRowsProcessed: $totalRowsProcessed,
-            resultsOk: $resultsOk,
-            resultsErr: $resultsErr,
-        );
+            return new UrlScanProgress(
+                totalRowsProcessed: $totalRowsProcessed,
+                resultsOk: $resultsOk,
+                resultsErr: $resultsErr,
+            );
+        });
     }
 
 }
