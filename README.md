@@ -3,7 +3,7 @@ A lightweight, framework-agnostic PHP package to scan large lists of URLs effici
 Designed for use inside Laravel commands or any PHP application where non-blocking URL checking is required
 <a href="https://fperdomo.dev/">
 <picture>
-<img alt="Logo for url scanner" src="art/banner.png">
+<img alt="Logo for url scanner" src="art/scanner.png">
 </picture>
 </a>
 ## use
