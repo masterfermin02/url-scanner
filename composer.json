@@ -1,0 +1,46 @@
+{
+  "name": "fperdomo/scanner",
+  "description": "Scan an array or file of URLs and report inaccessible URLs",
+  "keywords": ["url", "scanner", "csv"],
+  "homepage": "https://fperdomo.dev",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Fermin Perdomo",
+      "homepage": "https://fperdomo.dev",
+      "role": "Developer"
+    }
+  ],
+  "support": {
+    "email": "masterfermin02@gmail.com"
+  },
+  "require": {
+    "php" : ">=8.3",
+    "spatie/simple-excel": "*",
+    "nunomaduro/pokio": "^0.1.1"
+  },
+  "autoload": {
+    "psr-4": {
+      "Fperdomo\\App\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Tests\\": "tests/"
+    }
+  },
+  "scripts": {
+    "test": "pest"
+  },
+  "require-dev": {
+    "pestphp/pest": "^4.1",
+    "illuminate/http": "^12.38"
+  },
+  "config": {
+    "allow-plugins": {
+      "pestphp/pest-plugin": true
+    }
+  },
+  "minimum-stability": "stable",
+  "prefer-stable": true
+}
