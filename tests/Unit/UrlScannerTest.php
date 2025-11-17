@@ -20,23 +20,15 @@ describe('Url\Scanner', function () {
 
     test('fromFile returns FileScanner instance', function () {
         // Create a temporary test file
-        $csvFile = __DIR__ . '/../fixtures/test_scanner.csv';
-
-        if (!is_dir(dirname($csvFile))) {
-            mkdir(dirname($csvFile), 0777, true);
-        }
-
-        file_put_contents($csvFile, "url\nhttps://example.com");
+        $tempDir = new Spatie\TemporaryDirectory\TemporaryDirectory(__DIR__ . '/temp');
+        $csvFile = $tempDir->path('test_scanner.csv');
+        \Spatie\SimpleExcel\SimpleExcelWriter::create($csvFile)
+        ->addRow(['url' => 'https://example.com']);
 
         $scanner = Scanner::create();
         $fileScanner = $scanner->fromFile($csvFile);
 
         expect($fileScanner)->toBeInstanceOf(FileScanner::class);
-
-        // Cleanup
-        if (file_exists($csvFile)) {
-            unlink($csvFile);
-        }
     });
 
     test('provides fluent interface for chaining', function () {
